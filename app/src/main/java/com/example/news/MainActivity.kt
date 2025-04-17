@@ -3,46 +3,18 @@ package com.example.news
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -50,12 +22,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.google.accompanist.pager.HorizontalPager
-import com.google.accompanist.pager.rememberPagerState
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import com.google.accompanist.pager.*
+import com.google.accompanist.swiperefresh.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,8 +36,6 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
-import android.util.Log
-import com.example.news.BuildConfig
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,13 +53,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NewsApp(
     darkTheme: Boolean,
-    onToggleTheme: () -> Unit,
-    viewModel: NewsViewModel = viewModel()
+    onToggleTheme: () -> Unit
 ) {
+    val context = LocalContext.current
+    val viewModel: NewsViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return NewsViewModel(context) as T
+        }
+    })
+
     val categories = listOf("General", "Business", "Technology", "Sports", "Health")
     val pagerState = rememberPagerState(initialPage = 0)
     val coroutineScope = rememberCoroutineScope()
     var showBookmarks by remember { mutableStateOf(false) }
+    var selectedArticle by remember { mutableStateOf<Article?>(null) }
 
     Scaffold(
         topBar = {
@@ -110,8 +87,32 @@ fun NewsApp(
             )
         }
     ) { innerPadding ->
+        selectedArticle?.let { article ->
+            AlertDialog(
+                onDismissRequest = { selectedArticle = null },
+                title = { Text(article.headline) },
+                text = { Text(article.summary) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            data = android.net.Uri.parse(article.link)
+                        }
+                        context.startActivity(intent)
+                        selectedArticle = null
+                    }) {
+                        Text("Read More")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { selectedArticle = null }) {
+                        Text("Close")
+                    }
+                }
+            )
+        }
+
         if (showBookmarks) {
-            BookmarkScreen(viewModel, Modifier.padding(innerPadding))
+            BookmarkScreen(viewModel, Modifier.padding(innerPadding), onClick = { selectedArticle = it })
         } else {
             Column(modifier = Modifier.padding(innerPadding)) {
                 ScrollableTabRow(selectedTabIndex = pagerState.currentPage) {
@@ -134,12 +135,14 @@ fun NewsApp(
                     var articles by remember { mutableStateOf<List<Article>>(emptyList()) }
 
                     LaunchedEffect(categories[page]) {
-                        println("Loading articles for ${categories[page]}")
                         articles = viewModel.fetchArticles(categories[page])
-                        println("Loaded ${articles.size} articles")
                     }
 
-                    SwipeRefreshList(articles = articles, viewModel = viewModel)
+                    SwipeRefreshList(
+                        articles = articles,
+                        viewModel = viewModel,
+                        onClick = { selectedArticle = it }
+                    )
                 }
             }
         }
@@ -147,7 +150,11 @@ fun NewsApp(
 }
 
 @Composable
-fun SwipeRefreshList(articles: List<Article>, viewModel: NewsViewModel) {
+fun SwipeRefreshList(
+    articles: List<Article>,
+    viewModel: NewsViewModel,
+    onClick: (Article) -> Unit
+) {
     val context = LocalContext.current
     var isRefreshing by remember { mutableStateOf(false) }
     val refreshState = rememberSwipeRefreshState(isRefreshing)
@@ -168,7 +175,8 @@ fun SwipeRefreshList(articles: List<Article>, viewModel: NewsViewModel) {
                 ArticleItem(
                     article,
                     onBookmarkClick = { viewModel.bookmarkArticle(article) },
-                    onShareClick = { shareArticle(context, article) }
+                    onShareClick = { shareArticle(context, article) },
+                    onClick = { onClick(article) }
                 )
             }
         }
@@ -176,11 +184,17 @@ fun SwipeRefreshList(articles: List<Article>, viewModel: NewsViewModel) {
 }
 
 @Composable
-fun ArticleItem(article: Article, onBookmarkClick: () -> Unit, onShareClick: () -> Unit) {
+fun ArticleItem(
+    article: Article,
+    onBookmarkClick: () -> Unit,
+    onShareClick: () -> Unit,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(12.dp),
+            .padding(12.dp)
+            .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
@@ -212,7 +226,6 @@ fun ArticleItem(article: Article, onBookmarkClick: () -> Unit, onShareClick: () 
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(text = article.source, style = MaterialTheme.typography.labelSmall)
-
                 Row {
                     IconButton(onClick = onBookmarkClick) {
                         Icon(Icons.Default.Bookmark, contentDescription = "Bookmark")
@@ -227,20 +240,25 @@ fun ArticleItem(article: Article, onBookmarkClick: () -> Unit, onShareClick: () 
 }
 
 @Composable
-fun BookmarkScreen(viewModel: NewsViewModel, modifier: Modifier = Modifier) {
+fun BookmarkScreen(
+    viewModel: NewsViewModel,
+    modifier: Modifier = Modifier,
+    onClick: (Article) -> Unit
+) {
     val context = LocalContext.current
     LazyColumn(modifier = modifier.fillMaxSize()) {
         items(viewModel.bookmarkedArticles) { article ->
             ArticleItem(
                 article,
                 onBookmarkClick = { viewModel.bookmarkArticle(article) },
-                onShareClick = { shareArticle(context, article) }
+                onShareClick = { shareArticle(context, article) },
+                onClick = { onClick(article) }
             )
         }
     }
 }
 
-class NewsViewModel : ViewModel() {
+class NewsViewModel(private val context: Context) : ViewModel() {
     private val _bookmarkedArticles = mutableStateListOf<Article>()
     val bookmarkedArticles: List<Article> get() = _bookmarkedArticles
 
@@ -253,14 +271,16 @@ class NewsViewModel : ViewModel() {
     }
 
     suspend fun fetchArticles(category: String): List<Article> {
-        println("GNews API Key Injected: ${BuildConfig.NEWS_API_KEY}")
-        Log.d("KeyCheck", "Using API key: '${BuildConfig.NEWS_API_KEY}'")
-        Log.d("KeyCheck", "Fetching category: $category")
+        val apiKey = "eb34601c1ee5800e3337ee83b4833b33"
+        Log.d("KeyCheck", "Using API key: '$apiKey'")
+        Log.d("GNewsDebug", "Sending API request with key: '${apiKey}'")
+        Log.d("KEYCHECK", "API key length = ${apiKey.length}, value = '$apiKey'")
+
         return withContext(Dispatchers.IO) {
             try {
                 val response = GNewsApi.service.getTopHeadlines(
                     category = category.lowercase(),
-                    apiKey = BuildConfig.NEWS_API_KEY
+                    apiKey = apiKey
                 )
                 response.articles.map {
                     Article(
@@ -283,7 +303,7 @@ class NewsViewModel : ViewModel() {
 fun shareArticle(context: Context, article: Article) {
     val sendIntent = Intent().apply {
         action = Intent.ACTION_SEND
-        putExtra(Intent.EXTRA_TEXT, "${article.headline}\n${article.link}")
+        putExtra(Intent.EXTRA_TEXT, "${article.headline}\\n${article.link}")
         type = "text/plain"
     }
     val shareIntent = Intent.createChooser(sendIntent, null)
@@ -325,6 +345,7 @@ interface GNewsApiService {
     @GET("top-headlines")
     suspend fun getTopHeadlines(
         @Query("category") category: String,
+        @Query("country") country: String = "gb",
         @Query("lang") language: String = "en",
         @Query("token") apiKey: String
     ): GNewsResponse

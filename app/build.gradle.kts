@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+println("Available Gradle properties:")
+project.properties.forEach { println(" - ${it.key} = ${it.value}") }
+
 android {
     namespace = "com.example.news"
     compileSdk = 35
@@ -16,19 +19,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        val props = java.util.Properties() as java.util.Properties
-        file("${project.rootDir}/local.properties").inputStream().use {
-            props.load(it)
-        }
-        val apiKey: String = props.getProperty("NEWS_API_KEY") ?: "MISSING_KEY"
-        println("Loaded API key from file: $apiKey")
-        buildConfigField("String", "NEWS_API_KEY", "\"$apiKey\"")
     }
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     compileOptions {
@@ -75,6 +69,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)
+    implementation(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -82,4 +77,8 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    configurations.all {
+        exclude(group = "com.intellij", module = "annotations")
+    }
 }
