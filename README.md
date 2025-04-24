@@ -16,6 +16,7 @@ E-Press is an Android News Aggregator built using Kotlin, Jetpack Compose, and t
 ### Instructions
 
 1. **Clone the repository**
+
    Download the repository as a zip and uncompress it
 
 3. **Open in Android Studio.**
