@@ -7,7 +7,7 @@ E-Press is an Android News Aggregator built using Kotlin, Jetpack Compose, and t
 ## How to Build and Run the Application
 
 ### Requirements
-- Android Studio Meerkat | 2024.3.1 Patch 1
+- Android Studio Meerkat | 2024.3.1 Patch 1 or newer
 - Kotlin 2.0.21
 - Gradle Plugin 8.9.1
 - Minimum SDK: 24
